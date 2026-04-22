@@ -2201,14 +2201,103 @@ function toggleWishlistItem(id, btn, event) {
 function toggleWishlist() { showToast(`Wishlist: ${wishlist.length} item`, '❤️'); }
 
 // ── CHECKOUT ──
+const BASE_ONGKIR = 15000;
+const JATIBARANG_BREBES_DESA = [
+  'bojong',
+  'buaran',
+  'janegara',
+  'jatibarang kidul',
+  'jatibarang lor',
+  'kalialang',
+  'kalipucang',
+  'karanglo',
+  'kebogadung',
+  'kebonagung',
+  'kedungtukang',
+  'kemiriamba',
+  'kendawa',
+  'kertasinduyasa',
+  'klampis',
+  'klikiran',
+  'kramat',
+  'pamengger',
+  'pedeslohor',
+  'rengasbandung',
+  'tegalwulung',
+  'tembelang'
+];
+
+const SONGGOM_BREBES_DESA = [
+  'cenang',
+  'dukuhmaja',
+  'gegerkunci',
+  'jatimakmur',
+  'jatirokeh',
+  'karangsembung',
+  'songgom',
+  'songgom lor',
+  'wanacala',
+  'wanatawang'
+];
+
+function isNearbyArea(city, address) {
+  const areaText = `${city || ''} ${address || ''}`.toLowerCase();
+
+  const hasPostalCodeJatibarang = areaText.includes('52261');
+  const hasPostalCodeSonggom = areaText.includes('52266');
+  const hasJatibarangBrebes = areaText.includes('jatibarang') && areaText.includes('brebes');
+  const hasSonggomBrebes = areaText.includes('songgom') && areaText.includes('brebes');
+  const hasKecamatanKabupaten =
+    areaText.includes('kecamatan jatibarang') && areaText.includes('kabupaten brebes');
+  const hasKecamatanKabupatenSonggom =
+    areaText.includes('kecamatan songgom') && areaText.includes('kabupaten brebes');
+
+  const hasDesaWithContext = JATIBARANG_BREBES_DESA.some(d =>
+    areaText.includes(d) && (areaText.includes('jatibarang') || areaText.includes('brebes') || hasPostalCodeJatibarang)
+  );
+
+  const hasDesaSonggomWithContext = SONGGOM_BREBES_DESA.some(d =>
+    areaText.includes(d) && (areaText.includes('songgom') || areaText.includes('brebes') || hasPostalCodeSonggom)
+  );
+
+  return hasPostalCodeJatibarang || hasPostalCodeSonggom || hasJatibarangBrebes || hasSonggomBrebes || hasKecamatanKabupaten || hasKecamatanKabupatenSonggom || hasDesaWithContext || hasDesaSonggomWithContext;
+}
+
+function getShippingFee(city, address) {
+  return isNearbyArea(city, address) ? 0 : BASE_ONGKIR;
+}
+
+function renderCheckoutSummary() {
+  if (cart.length === 0) return;
+  const addr = document.getElementById('faddress')?.value.trim() || '';
+  const city = document.getElementById('fcity')?.value.trim() || '';
+  const total = cart.reduce((a, i) => a + i.price * i.qty, 0);
+  const ongkir = getShippingFee(city, addr);
+  const nearbyNote = ongkir === 0
+    ? '*Gratis ongkir berlaku untuk alamat ini (Kecamatan Jatibarang/Songgom, Kabupaten Brebes dan desa sekitarnya).'
+    : '*Gratis ongkir hanya untuk wilayah Kecamatan Jatibarang/Songgom, Kabupaten Brebes dan desa sekitarnya.';
+
+  document.getElementById('orderSummary').innerHTML = `
+    ${cart.map(i => `<div class="order-line"><span>${i.image && i.image.toString().length < 5 ? i.image : '📦'} ${i.name} ×${i.qty}</span><span>${formatRupiah(i.price*i.qty)}</span></div>`).join('')}
+    <div class="order-line"><span>Ongkos Kirim</span><span>${ongkir === 0 ? '<span style="color:var(--green-primary)">GRATIS</span>' : formatRupiah(ongkir)}</span></div>
+    <div class="order-line" style="font-size:12px;color:var(--gray-500);margin-top:-4px"><span>${nearbyNote}</span><span></span></div>
+    <div class="order-line total"><span>Total</span><span>${formatRupiah(total + ongkir)}</span></div>`;
+}
+
+function bindCheckoutShippingListeners() {
+  const addrInput = document.getElementById('faddress');
+  const cityInput = document.getElementById('fcity');
+  [addrInput, cityInput].forEach(el => {
+    if (!el || el.dataset.shippingBound === '1') return;
+    el.addEventListener('input', renderCheckoutSummary);
+    el.dataset.shippingBound = '1';
+  });
+}
+
 function openCheckout() { 
   if(cart.length === 0) return; 
-  const total = cart.reduce((a, i) => a + i.price * i.qty, 0);
-  const ongkir = total >= 150000 ? 0 : 15000;
-  document.getElementById('orderSummary').innerHTML = `
-    ${cart.map(i => `<div class="order-line"><span>${i.image && i.image.toString().length < 5 ? i.image : '??'} ${i.name} ?${i.qty}</span><span>${formatRupiah(i.price*i.qty)}</span></div>`).join('')}
-    <div class="order-line"><span>Ongkos Kirim</span><span>${ongkir === 0 ? '<span style="color:var(--green-primary)">GRATIS</span>' : formatRupiah(ongkir)}</span></div>
-    <div class="order-line total"><span>Total</span><span>${formatRupiah(total + ongkir)}</span></div>`;
+  bindCheckoutShippingListeners();
+  renderCheckoutSummary();
   document.getElementById('checkoutModal').classList.add('open'); document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartSidebar').classList.remove('open'); 
   renderPaymentDetail();
 }
@@ -2308,7 +2397,7 @@ function submitOrder() {
 
   const paymentMethod = getActivePaymentMethod();
   const total = cart.reduce((a, i) => a + i.price * i.qty, 0);
-  const ongkir = total >= 150000 ? 0 : 15000;
+  const ongkir = getShippingFee(city, addr);
   const grandTotal = total + ongkir;
   const detailPesanan = cart.map(i => `${i.name} (x${i.qty})`).join(', ');
 
